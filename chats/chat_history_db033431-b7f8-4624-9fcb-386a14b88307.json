@@ -1,0 +1,26 @@
+[
+  {
+    "role": "human",
+    "message": "Hello, AI!"
+  },
+  {
+    "role": "ai",
+    "message": "Hello there! How can I help you today?\n"
+  },
+  {
+    "role": "human",
+    "message": "My Name is Arpita, Do you know me?"
+  },
+  {
+    "role": "ai",
+    "message": "As an AI, I have no memory of past conversations and I don't know people in the real world. So, no, I don't know you, Arpita. It's nice to meet you though!\n"
+  },
+  {
+    "role": "human",
+    "message": "Can you guess my age?"
+  },
+  {
+    "role": "ai",
+    "message": "I am not good at guessing ages, and I wouldn't want to make an inaccurate guess! It's also generally considered polite not to ask someone's age.\n"
+  }
+]

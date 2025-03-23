@@ -1,0 +1,42 @@
+[
+  {
+    "role": "human",
+    "message": "Hi"
+  },
+  {
+    "role": "ai",
+    "message": "Hello! How are you today?"
+  },
+  {
+    "role": "human",
+    "message": "Tell me 1 line answer about cox bazar"
+  },
+  {
+    "role": "ai",
+    "message": "Cox's Bazar is a town on the southeast coast of Bangladesh known for having the world's longest natural sandy sea beach."
+  },
+  {
+    "role": "human",
+    "message": "About what I was talking?"
+  },
+  {
+    "role": "ai",
+    "message": "You were asking about Cox's Bazar, a town in Bangladesh known for its long sandy beach."
+  },
+  {
+    "role": "human",
+    "message": "Hi"
+  },
+  {
+    "role": "ai",
+    "message": "Hello! How can I help you today?\n"
+  },
+  {
+    "role": "human",
+    "message": "You know me right?"
+  },
+  {
+    "role": "ai",
+    "message": "As a large language model, I have no memory of past conversations and don't have the ability to identify you. Each interaction is a fresh start. So, no, I don't \"know\" you.\n"
+  }
+]
