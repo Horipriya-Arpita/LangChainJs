@@ -11,6 +11,15 @@ import { AgentExecutor, createOpenAIToolsAgent } from "langchain/agents";
 import { Calculator } from "@langchain/community/tools/calculator";
 import { Tool } from "langchain/tools"; // Import Tool
 import axios from "axios"; // Import axios for making HTTP requests
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { TextLoader } from "langchain/document_loaders/fs/text";
+import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { OpenAIEmbeddings } from "@langchain/openai";
+import { RetrievalQAChain } from "langchain/chains";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { CheerioWebBaseLoader } from "@langchain/community/document_loaders/web/cheerio";
+import * as fs from 'fs/promises'; // Import fs/promises
+
 
 config();
 
@@ -18,94 +27,54 @@ const app = express();
 app.use(express.json());
 
 
-class DoctorListTool extends Tool {
-    name = "doctor_list";
-    description = "Fetches a list of doctors from a specified webhook URL.";
-  
-    async _call(input){
-      try {
-        const response = await axios.get("https://9f961dc0390d4179baa1213de1265682.api.mockbin.io/"); // Replace with your mockbin URL
-        if (response.status === 200 && response.data) {
-          return JSON.stringify(response.data); // Return the JSON data as a string
-        } else {
-          return `Failed to fetch doctor list. Status: ${response.status}`;
-        }
-      } catch (error) {
-        return `Error fetching doctor list: ${error.message}`;
-      }
-    }
-  }
-
-
-  class DoctorAppointmentTool extends Tool {
-    name = "doctor_appointment";
-    description = "Sets an appointment with a doctor using provided patient's name and phone number extracted from text.";
+class WebpageQATool extends Tool {
+    name = "webpage_qa";
+    description = "Provide informations from a provided webpage URL.";
+    chain = null;
+    extractedText = "";
   
     async _call(input) {
+      if (!this.chain) {
+        return "Webpage not loaded. Please load a webpage first.";
+      }
       try {
-        // Use OpenAI (or another NLP service) to extract name and phone
-        const extractionResult = await this.extractNameAndPhone(input);
-  
-        if (!extractionResult || !extractionResult.name || !extractionResult.phone) {
-          return "Could not reliably extract name and phone number from the input.";
-        }
-  
-        const { name, phone } = extractionResult;
-  
-        const response = await axios.post(
-          "https://8848abc78e7b41fe932f16177d4c312c.api.mockbin.io/", // Replace with your mockbin POST URL
-          { name, phone }
-        );
-  
-        if (response.status === 200) {
-          return `Appointment set successfully for ${name} with phone ${phone}.`;
-        } else {
-          return `Failed to set appointment. Status: ${response.status}`;
-        }
+        const response = await this.chain.call({ query: input });
+        return `Answer: ${response.text}\nExtracted Text:\n${this.extractedText}`;
       } catch (error) {
-        return `Error setting appointment: ${error.message}`;
+        return `Error answering question: ${error.message}`;
       }
     }
   
-    async extractNameAndPhone(text) {
+    async loadWebpage(url) {
       try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEYY}`, // Replace with your OpenAI API key
-          },
-          body: JSON.stringify({
-            model: 'gpt-3.5-turbo-1106',
-            messages: [
-              {
-                role: 'user',
-                content: `Extract the name and phone number from the following text and return it as JSON: { "name": "string", "phone": "string"}. \nText: ${text}\nJSON:`,
-              },
-            ],
-          }),
+        const loader = new CheerioWebBaseLoader(url);
+        const docs = await loader.load();
+        let extractedText = docs.map((doc) => doc.pageContent).join("\n");
+        extractedText = extractedText.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        this.extractedText = extractedText;
+        //console.log("Extracted Text:", this.extractedText);
+  
+        const textSplitter = new RecursiveCharacterTextSplitter({
+          chunkSize: 1000,
+          chunkOverlap: 200, // Increased chunkOverlap
         });
+        const splits = await textSplitter.splitDocuments(docs);
+        const embeddings = new OpenAIEmbeddings({ openAIApiKey: process.env.OPENAI_API_KEYY });
+        const vectorStore = await MemoryVectorStore.fromDocuments(splits, embeddings);
   
-        if (!response.ok) {
-          throw new Error(`OpenAI API error! status: ${response.status}`);
-        }
-  
-        const data = await response.json();
-        const jsonString = data.choices[0].message.content.trim();
-        return JSON.parse(jsonString);
-  
+        this.chain = RetrievalQAChain.fromLLM(new ChatOpenAI({ openAIApiKey: process.env.OPENAI_API_KEYY, model: "gpt-3.5-turbo-1106" }), vectorStore.asRetriever());
+        return "Webpage loaded successfully.";
       } catch (error) {
-        console.error("Extraction error:", error);
-        return null;
+        return `Error loading webpage: ${error.message}`;
       }
     }
   }
+  
+  const webpageQATool = new WebpageQATool();
+  
 
 const tools = [
-    new TavilySearchResults({ maxResults: 1, apiKey: process.env.TAVILY_API_KEY }),
-    new Calculator(),
-    new DoctorListTool(),
-    new DoctorAppointmentTool(),
+  webpageQATool,
 ];
 
 const prompt = ChatPromptTemplate.fromMessages([
@@ -144,13 +113,14 @@ const chainWithHistory = new RunnableWithMessageHistory({
   getMessageHistory: async (sessionId) => {
     const chatHistory = new FileSystemChatMessageHistory({
       sessionId,
-      userId: "user-id",
+      userId: "user-id2",
     });
     return chatHistory;
   },
 });
 
-app.get("/", (req, res) => {
+app.get("/", async (req, res) => {
+  
   res.send("AI Chat API is running");
 });
 
@@ -184,7 +154,7 @@ app.get("/chat/:chatId/messages", async (req, res) => {
   try {
     const chatHistory = new FileSystemChatMessageHistory({
       sessionId: chatId,
-      userId: "user-id",
+      userId: "user-id2",
     });
     const messages = await chatHistory.getMessages();
     res.json({ chatId, messages });
@@ -196,6 +166,8 @@ app.get("/chat/:chatId/messages", async (req, res) => {
 
 // Start the server
 const port = 3000;
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+app.listen(port, async () => {
+    const loadWebpageResult = await webpageQATool.loadWebpage("https://js.langchain.com/docs/introduction/");
+    console.log(loadWebpageResult);
+    console.log(`Server running on http://localhost:${port}`);
 });
